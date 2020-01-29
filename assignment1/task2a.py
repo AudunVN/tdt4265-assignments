@@ -1,7 +1,14 @@
 import numpy as np
 import utils
+import matplotlib.pyplot as plt
 np.random.seed(1)
 
+def print_mnist_img(X: np.ndarray, i: int):
+    with np.printoptions(precision=2, suppress=True, threshold=99999, linewidth=999):
+        out = X.copy()
+        out[i] = np.nan
+        out = np.reshape(out[:-1]*10, (28, 28))
+        print(out)
 
 def pre_process_images(X: np.ndarray):
     """
@@ -35,11 +42,31 @@ def cross_entropy_loss(targets: np.ndarray, outputs: np.ndarray) -> float:
     assert targets.shape == outputs.shape,\
         f"Targets shape: {targets.shape}, outputs: {outputs.shape}"
 
-    targets = 1 / (1 + np.exp(-targets))
+    N = targets.shape[0] # amount of samples
+    K = targets.shape[1] # amount of classes
 
-    ce_loss = (outputs * np.log(targets) + (1 - outputs) * np.log(1 - targets))
+    #ce_loss = -(targets.T * np.log(outputs) + (1 - targets.T) * np.log(1 - outputs))
+    #ce_loss_mean = -ce_loss.mean()
 
-    return -ce_loss.mean()
+    #print(ce_loss)
+
+    #print("Targets:")
+    #print(targets)
+    #print("Outputs:")
+    #print(outputs)
+
+    #print(ce_loss_mean)
+
+    #N = targets.shape[0]
+    #K = targets.shape[1]
+
+    #ce_loss = (-1 / (N*M)) * np.sum(np.sum((targets * np.log(outputs))))
+
+    #outputs = np.where(outputs > 0.5, 1, 0)
+
+    ce_loss = -np.sum(targets*np.log(outputs)) / (N*K)
+
+    return ce_loss
 
 class BinaryModel:
 
@@ -47,6 +74,7 @@ class BinaryModel:
         # Define number of input nodes
         self.I = 785
         self.w = np.zeros((self.I,1))
+        
         self.grad = None
 
         # Hyperparameter for task 3
@@ -55,7 +83,17 @@ class BinaryModel:
     def sigmoid(self, Z):
         Z = Z.reshape(-1,1)
 
-        return 1 / (1 + np.exp(-np.dot(self.w.T, Z)))
+        return 1 / (1 + np.exp(-Z))
+
+    def f_w(self, x: np.ndarray) -> float:
+        """
+        Args:
+            x: image of shape [1, 785]
+        Returns:
+            p: probability x (float)
+        """
+
+        return self.sigmoid(self.w.T @ x)
     
     def forward(self, X: np.ndarray) -> np.ndarray:
         """
@@ -65,9 +103,19 @@ class BinaryModel:
             y: output of model with shape [batch size, 1]
         """
 
-        y = np.apply_along_axis(self.sigmoid, 1, X).reshape(-1,1)
+        y = np.apply_along_axis(self.f_w, 1, X).reshape(-1,1)
 
         return y
+
+    def dC_dw(self, x: np.ndarray, y_sum: float) -> np.ndarray:
+        """
+        Args:
+            x: image of shape [1, 785]
+            y_sum: y_exp - y_out (float) 
+            w: gradient for image [1, 785]
+        """
+
+        return x * y_sum
 
     def backward(self, X: np.ndarray, outputs: np.ndarray, targets: np.ndarray) -> None:
         """
@@ -76,18 +124,18 @@ class BinaryModel:
             outputs: outputs of model of shape: [batch size, 1]
             targets: labels/targets of each image of shape: [batch size, 1]
         """
-        
+
         assert targets.shape == outputs.shape,\
             f"Output shape: {outputs.shape}, targets: {targets.shape}"
         self.grad = np.zeros_like(self.w)
         assert self.grad.shape == self.w.shape,\
             f"Grad shape: {self.grad.shape}, w: {self.w.shape}"
 
-        targets = targets + 1e-15
+        N = targets.shape[0] # amount of samples
+        K = targets.shape[1] # amount of classes
 
-        targets = 1 / (1 + np.exp(-targets))
-
-        self.grad = -np.dot((targets - outputs).T, X).T
+        #self.grad = - ((targets - outputs).T @ X).T / (N*K)
+        self.grad = -np.dot((targets - outputs).T, X).T / (N*K)
 
     def zero_grad(self) -> None:
         self.grad = None
@@ -100,6 +148,9 @@ def gradient_approximation_test(model: BinaryModel, X: np.ndarray, Y: np.ndarray
     """
     w_orig = model.w.copy()
     epsilon = 1e-2
+    image1 = X[0][:-1].reshape(28,28)
+    plt.imshow(image1)
+    plt.show()
     for i in range(w_orig.shape[0]):
         orig = model.w[i].copy()
         model.w[i] = orig + epsilon
@@ -113,13 +164,21 @@ def gradient_approximation_test(model: BinaryModel, X: np.ndarray, Y: np.ndarray
         # Actual gradient
         logits = model.forward(X)
         model.backward(X, logits, Y)
+        #print_mnist_img(model.grad, i)
+        if (i == 0):
+            image2 = model.grad[:-1].reshape(28,28)
+            plt.imshow(image2)
+            plt.show()
         difference = gradient_approximation - model.grad[i, 0]
-        assert abs(difference) <= epsilon**2,\
-            f"Calculated gradient is incorrect. " \
-            f"Approximation: {gradient_approximation}, actual gradient: {model.grad[i, 0]}\n" \
+        
+        #assert abs(difference) <= epsilon**2,\
+        if (abs(difference) <= epsilon**2):
+            print(f"Calculated gradient is incorrect. " \
+            f"Approximation: {gradient_approximation}, actual gradient at iteration {i}: {model.grad[i, 0]}\n" \
             f"If this test fails there could be errors in your cross entropy loss function, " \
-            f"forward function or backward function"
-
+            f"forward function or backward function")
+        else:
+            print(f"Gradient est. {gradient_approximation}, actual gradient {model.grad[i, 0]}")
 
 if __name__ == "__main__":
     category1, category2 = 2, 3

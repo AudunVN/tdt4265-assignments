@@ -18,7 +18,6 @@ def calculate_accuracy(X: np.ndarray, targets: np.ndarray, model: BinaryModel) -
     accuracy = 0.0
     return accuracy
 
-
 def train(
         num_epochs: int,
         learning_rate: float,
